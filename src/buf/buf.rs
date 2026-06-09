@@ -18,24 +18,24 @@ impl BytePacketBuffer {
         }
     }
 
-    fn pos(&self) -> usize {
+    pub fn pos(&self) -> usize {
         self.pos
     }
 
     /// Advances the position in the buffer, `steps` times.
-    fn step(&mut self, steps: usize) -> Result<(), ()> {
+    pub fn step(&mut self, steps: usize) -> Result<(), ()> {
         self.pos += steps;
         Ok(())
     }
 
     /// Sets the position in the buffer to `pos`
-    fn seek(&mut self, pos: usize) -> Result<(), String> {
+    pub fn seek(&mut self, pos: usize) -> Result<(), String> {
         self.pos = pos;
         Ok(())
     }
 
     /// Reads a single byte from the buffer and then advances the position.
-    fn read(&mut self) -> Result<u8, String> {
+    pub fn read(&mut self) -> Result<u8, String> {
         if self.pos >= MAX_UDP_PACKET_SIZE {
             return Err("End of buffer".into());
         }
@@ -46,7 +46,7 @@ impl BytePacketBuffer {
     }
 
     /// Reads a single byte from the buffer without advancing the position.
-    fn get(&mut self, pos: usize) -> Result<u8, String> {
+    pub fn get(&mut self, pos: usize) -> Result<u8, String> {
         if pos >= MAX_UDP_PACKET_SIZE {
             return Err("End of buffer".into());
         }
@@ -55,7 +55,7 @@ impl BytePacketBuffer {
 
     /// Reads a range of bytes from the buffer starting at `start` and going `len` bytes
     /// forward without advancing the position.
-    fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8], String> {
+    pub fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8], String> {
         if start >= MAX_UDP_PACKET_SIZE || len >= MAX_UDP_PACKET_SIZE {
             return Err("End of buffer".into());
         }
@@ -64,12 +64,12 @@ impl BytePacketBuffer {
     }
 
     /// Read two bytes, stepping twice forward
-    fn read_u16(&mut self) -> Result<u16, String> {
+    pub fn read_u16(&mut self) -> Result<u16, String> {
         let res = ((self.read()? as u16) << 8) | (self.read()? as u16);
         Ok(res)
     }
 
-    fn read_u32(&mut self) -> Result<u32, String> {
+    pub fn read_u32(&mut self) -> Result<u32, String> {
         let res = ((self.read()? as u32) << 24)
             | ((self.read()? as u32) << 16)
             | ((self.read()? as u32) << 8)
@@ -86,7 +86,7 @@ impl BytePacketBuffer {
     ///
     /// This function will take something like [3]www[6]google[3]com[0] and append
     /// www.google.com to outstr.
-    fn read_qname(&mut self, outstr: &mut String) -> Result<(), String> {
+    pub fn read_qname(&mut self, outstr: &mut String) -> Result<(), String> {
         // Keep track of position locally for when we run into a jump
         let mut pos = self.pos();
 
