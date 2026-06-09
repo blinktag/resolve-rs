@@ -1,13 +1,5 @@
 use crate::buf::BytePacketBuffer;
-
-#[derive(Clone, Debug)]
-pub struct Packet {
-    pub header: DnsHeader,       // 12 bytes
-    pub question: Vec<Question>, // variable
-    pub answer: Vec<Record>,     // variable
-    pub authority: Vec<Record>,  // variable
-    pub additional: Vec<Record>, // variable
-}
+use crate::record::result::ResultCode;
 
 #[derive(Clone, Debug, Default)]
 pub struct DnsHeader {
@@ -116,104 +108,11 @@ impl DnsHeader {
         // 1 = query, 0 = response
         self.response = (a & (1 << 7)) > 0;
 
+        // Straight read of 1 byte
+        self.result_code = ResultCode::from_u8(b);
+
+        self.checking_disabled = (b & (1 << 4)) > 0;
+
         Ok(())
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Question {
-    // The domain name, encoded as a sequence of labels, terminated by a null byte.
-    name: String,
-
-    // Record Type (2 bytes)
-    // Prefixed with `r` because `type` is a keyword in Rust
-    rtype: u16,
-
-    //  The class of the record (2 bytes)
-    // Typically `1` for most cases
-    class: u16,
-}
-
-#[derive(Clone, Debug)]
-pub struct RecordPreamble {
-    // The domain name, encoded as a sequence of labels, terminated by a null byte.
-    name: String,
-
-    // Record Type (2 bytes)
-    rtype: u16,
-
-    // The class of the record (2 bytes)
-    // Typically `1` for most cases
-    class: u16,
-
-    // Time-To-Live (4 bytes)
-    // Defines how long to cache the record for.
-    ttl: u32,
-
-    // Length of the data specific to the record type (2 bytes)
-    len: u16,
-}
-
-#[derive(Clone, Debug)]
-pub struct Record {
-    preamble: RecordPreamble,
-    data: RecordData,
-}
-
-#[derive(Clone, Debug)]
-pub enum RecordData {
-    A([u8; 4]),
-    AAAA([u8; 16]),
-    CNAME(String),
-    MX {
-        preference: u16,
-        exchange: String,
-    },
-    NS(String),
-    PTR(String),
-    SOA {
-        mname: String,
-        rname: String,
-        serial: u32,
-        refresh: u32,
-        retry: u32,
-        expire: u32,
-        minimum: u32,
-    },
-    SRV {
-        priority: u16,
-        weight: u16,
-        port: u16,
-        target: String,
-    },
-    TXT(String),
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
-pub enum ResultCode {
-    #[default]
-    NOERROR = 0,
-
-    FORMERR = 1,
-    SERVFAIL = 2,
-    NXDOMAIN = 3,
-    NOTIMP = 4,
-    REFUSED = 5,
-}
-
-impl ResultCode {
-    pub fn from_num(num: u8) -> ResultCode {
-        match num {
-            1 => ResultCode::FORMERR,
-            2 => ResultCode::SERVFAIL,
-            3 => ResultCode::NXDOMAIN,
-            4 => ResultCode::NOTIMP,
-            5 => ResultCode::REFUSED,
-            0 | _ => ResultCode::NOERROR,
-        }
-    }
-
-    pub fn from_u8(num: u8) -> ResultCode {
-        ResultCode::from_num(num)
     }
 }
