@@ -8,37 +8,57 @@ pub struct DnsHeader {
     // same id. This is needed to differentiate responses due to the stateless nature of UDP.
     pub id: u16,
 
-    // Query response (1 bit)
-    // Set to 1 for a query, 0 for a response.
-    pub response: bool,
+    // ----------- Flags -----------
 
-    // Operation code (4 bits)
-    // Typically always `0` for queries.
-    pub op_code: u8,
-
-    // Authoritative answer (1 bit)
-    // Set to 1 if the response is authoritative.
-    pub authoritative_answer: bool,
-
-    // Truncated message (1 bit)
-    // Set to 1 if the message length exceeds 512 bytes
-    pub truncated_message: bool,
+    // ------ First 8 bits ------
 
     // Recursion Desired (1 bit)
     // Set by the sender if the server should attempt to resolve the query recursively if it
     // does not have an answer readily available.
     pub recursion_desired: bool,
 
-    // Recursion available (1 bit)
-    // Set by the server to indicate whether recursive queries are allowed.
-    pub recursion_available: bool,
+    // Truncated message (1 bit)
+    // Set to 1 if the message length exceeds 512 bytes
+    pub truncated_message: bool,
+
+    // Authoritative answer (1 bit)
+    // Set to 1 if the response is authoritative.
+    pub authoritative_answer: bool,
+
+    // Operation code (4 bits)
+    // Typically always `0` for queries.
+    pub op_code: u8,
+
+    // Query response (1 bit)
+    // Set to 1 for a query, 0 for a response.
+    pub response: bool,
+
+    // --------- End First 8 bits ---------
+
+    // --------- Second 8 bits ---------
+
+    // Response code (4 bits)
+    // Set by server to indicate success or failure of the query.
+    pub rescode: ResultCode, // 4 bits
+
+    // TODO: what is this?
+    // (1 bit)
+    pub checking_disabled: bool,
+
+    // Authenticated data (1 bit)
+    // TODO: what is this?
+    pub authed_data: bool,
 
     // Reserved (3 bits)
     pub _z: bool,
 
-    // Response code (4 bits)
-    // Set by server to indicate success or failure of the query.
-    pub result_code: ResultCode, // 4 bits
+    // Recursion available (1 bit)
+    // Set by the server to indicate whether recursive queries are allowed.
+    pub recursion_available: bool,
+
+    // --------- End Second 8 bits ---------
+
+    // --------- End Flags ---------
 
     // Number of questions (16 bits)
     pub questions: u16, // 16 bits
@@ -98,7 +118,7 @@ impl DnsHeader {
         // 1000_1000 >> 3 = 0001_0001
         //                       ^^^^ this is where the opcode is now
         // Then we AND with 0x0F to get the lowest 4 bits:
-        //   0001_0001 <-- byts from packet
+        //   0001_0001 <-- bytes from packet
         // & 0000_1111 <-- mask off everything but the lowest 4 bits
         //   ---- ----
         // = 0000_0001 <-- opcode
@@ -108,10 +128,19 @@ impl DnsHeader {
         // 1 = query, 0 = response
         self.response = (a & (1 << 7)) > 0;
 
-        // Straight read of 1 byte
-        self.result_code = ResultCode::from_u8(b);
+        // Straight read of 1 byte for the response code
+        self.rescode = ResultCode::from_u8(b & 0x0F);
 
         self.checking_disabled = (b & (1 << 4)) > 0;
+        self.authed_data = (b & (1 << 5)) > 0;
+        self._z = (b & (1 << 6)) > 0;
+        self.recursion_available = (b & (1 << 7)) > 0;
+
+        // Next 4 bytes are the number of questions, answers, etc.
+        self.questions = buffer.read_u16()?;
+        self.answers = buffer.read_u16()?;
+        self.authoritative_entries = buffer.read_u16()?;
+        self.resource_entries = buffer.read_u16()?;
 
         Ok(())
     }
