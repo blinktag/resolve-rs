@@ -51,14 +51,7 @@ impl DnsRecord {
         match query_type {
             QueryType::A => {
                 let raw_addr = buffer.read_u32()?;
-                let addr = Ipv4Addr::new(
-                    ((raw_addr >> 24) & 0xFF) as u8,
-                    ((raw_addr >> 16) & 0xFF) as u8,
-                    ((raw_addr >> 8) & 0xFF) as u8,
-                    ((raw_addr >> 0) & 0xFF) as u8,
-                );
-                // TODO: can we replace ^ with below?
-                //let addr = Ipv4Addr::from(raw_addr);
+                let addr = Ipv4Addr::from(raw_addr);
                 Ok(DnsRecord::A {
                     domain,
                     address: addr,
