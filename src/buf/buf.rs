@@ -23,7 +23,7 @@ impl BytePacketBuffer {
     }
 
     /// Advances the position in the buffer, `steps` times.
-    pub fn step(&mut self, steps: usize) -> Result<(), ()> {
+    pub fn step(&mut self, steps: usize) -> Result<(), String> {
         self.pos += steps;
         Ok(())
     }
