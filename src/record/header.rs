@@ -144,4 +144,37 @@ impl DnsHeader {
 
         Ok(())
     }
+
+    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<(), String> {
+        // First field is ID
+        buffer.write_u16(self.id)?;
+
+        // Write our flags, 16 bits total
+
+        // First 8 bits are the flags
+        buffer.write_u8(
+            (self.recursion_desired as u8)
+                | (self.truncated_message as u8) << 1
+                | (self.authoritative_answer as u8) << 2
+                | (self.op_code as u8) << 3
+                | (self.response as u8) << 7,
+        )?;
+
+        // Second 8 bits are the data length
+        buffer.write_u8(
+            (self.rescode as u8)
+                | (self.checking_disabled as u8) << 4
+                | (self.authed_data as u8) << 5
+                | (self._z as u8) << 6
+                | (self.recursion_available as u8) << 7,
+        )?;
+
+        // Data length fields - 2 bits each
+        buffer.write_u16(self.questions)?;
+        buffer.write_u16(self.answers)?;
+        buffer.write_u16(self.authoritative_entries)?;
+        buffer.write_u16(self.resource_entries)?;
+
+        Ok(())
+    }
 }

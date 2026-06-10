@@ -3,26 +3,6 @@ use crate::record::question::QueryType;
 use std::net::Ipv4Addr;
 
 #[derive(Clone, Debug)]
-pub struct RecordPreamble {
-    // The domain name, encoded as a sequence of labels, terminated by a null byte.
-    name: String,
-
-    // Record Type (2 bytes)
-    rtype: u16,
-
-    // The class of the record (2 bytes)
-    // Typically `1` for most cases
-    class: u16,
-
-    // Time-To-Live (4 bytes)
-    // Defines how long to cache the record for.
-    ttl: u32,
-
-    // Length of the data specific to the record type (2 bytes)
-    len: u16,
-}
-
-#[derive(Clone, Debug)]
 pub enum DnsRecord {
     UNKNOWN {
         domain: String,
@@ -69,5 +49,29 @@ impl DnsRecord {
                 })
             }
         }
+    }
+
+    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<usize, String> {
+        let start_pos = buffer.pos();
+
+        match &self {
+            DnsRecord::A {
+                domain,
+                address,
+                ttl,
+            } => {
+                buffer.write_qname(domain)?; // Domain labels
+                buffer.write_u16(QueryType::A.to_u16())?; // Record type
+                buffer.write_u16(1)?; // TODO: what field is this?
+                buffer.write_u32(*ttl)?;
+                buffer.write_u16(4)?; // TODO: what field is this?
+                buffer.write_u32(address.to_bits())?;
+            }
+            DnsRecord::UNKNOWN { .. } => {
+                eprintln!("Skipping record: {:?}", self)
+            }
+        }
+
+        Ok(buffer.pos() - start_pos)
     }
 }

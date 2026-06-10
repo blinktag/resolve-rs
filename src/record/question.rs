@@ -41,4 +41,14 @@ impl DnsQuestion {
 
         Ok(())
     }
+
+    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<(), String> {
+        buffer.write_qname(&self.name)?;
+
+        let typenum = self.query_type.to_u16();
+        buffer.write_u16(typenum)?;
+        buffer.write_u16(0)?;
+
+        Ok(())
+    }
 }

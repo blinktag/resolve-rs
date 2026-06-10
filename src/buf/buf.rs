@@ -1,5 +1,6 @@
 pub const MAX_UDP_PACKET_SIZE: usize = 512;
 const MAX_JUMPS: usize = 5;
+const MAX_LABEL_LEN: usize = 63;
 
 pub struct BytePacketBuffer {
     // Max UDP packet size is 512 bytes
@@ -157,6 +158,59 @@ impl BytePacketBuffer {
         if !jumped {
             self.seek(pos)?;
         }
+
+        Ok(())
+    }
+
+    pub fn write(&mut self, val: u8) -> Result<(), String> {
+        if self.pos >= MAX_UDP_PACKET_SIZE {
+            return Err("End of buffer".into());
+        }
+
+        self.buf[self.pos] = val;
+        self.pos += 1;
+
+        Ok(())
+    }
+
+    pub fn write_u8(&mut self, val: u8) -> Result<(), String> {
+        self.write(val)
+    }
+
+    pub fn write_u16(&mut self, val: u16) -> Result<(), String> {
+        self.write((val >> 8) as u8)?;
+        self.write((val & 0xff) as u8)?;
+
+        Ok(())
+    }
+
+    pub fn write_u32(&mut self, val: u32) -> Result<(), String> {
+        self.write(((val >> 24) & 0xff) as u8)?;
+        self.write(((val >> 16) & 0xff) as u8)?;
+        self.write(((val >> 8) & 0xff) as u8)?;
+        self.write(((val >> 0) & 0xff) as u8)?;
+
+        Ok(())
+    }
+
+    pub fn write_qname(&mut self, qname: &str) -> Result<(), String> {
+        for label in qname.split('.') {
+            let len = label.len();
+            if len > MAX_LABEL_LEN {
+                return Err("Label is longer than 63 characters".into());
+            }
+
+            // Write length byte
+            self.write_u8(len as u8)?;
+
+            // Write label bytes
+            for b in label.as_bytes() {
+                self.write_u8(*b)?;
+            }
+        }
+
+        // Terminate labels
+        self.write_u8(0)?;
 
         Ok(())
     }
