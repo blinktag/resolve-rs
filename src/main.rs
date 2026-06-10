@@ -14,8 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn write_packet() -> Result<(), Box<dyn std::error::Error>> {
-    let qname = "google.com";
-    let qtype = QueryType::A;
+    let qname = "yahoo.com";
+    let qtype = QueryType::AAAA;
 
     let server = ("8.8.8.8", 53);
 

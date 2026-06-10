@@ -1,3 +1,5 @@
+use crate::record::record::TERMINATOR;
+
 pub const MAX_UDP_PACKET_SIZE: usize = 512;
 const MAX_JUMPS: usize = 5;
 const MAX_LABEL_LEN: usize = 63;
@@ -101,7 +103,7 @@ impl BytePacketBuffer {
             // can craft a packet with a cycle in the jump instructions. This guards
             // against such packets.
             if jumps_performed > MAX_JUMPS {
-                return Err(format!("Li,it of {} jumps exceeded", MAX_JUMPS).into());
+                return Err(format!("Limit of {} jumps exceeded", MAX_JUMPS).into());
             }
 
             // At this point, we're always at the beginning of a label. Recall
@@ -210,7 +212,20 @@ impl BytePacketBuffer {
         }
 
         // Terminate labels
-        self.write_u8(0)?;
+        self.write_u8(TERMINATOR)?;
+
+        Ok(())
+    }
+
+    pub fn set(&mut self, pos: usize, val: u8) -> Result<(), String> {
+        self.buf[pos] = val;
+
+        Ok(())
+    }
+
+    pub fn set_u16(&mut self, pos: usize, val: u16) -> Result<(), String> {
+        self.set(pos, (val >> 8) as u8)?;
+        self.set(pos + 1, (val & 0xFF) as u8)?;
 
         Ok(())
     }

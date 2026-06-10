@@ -3,14 +3,29 @@ use crate::buf::BytePacketBuffer;
 #[derive(PartialEq, Eq, Debug, Clone, Hash, Copy)]
 pub enum QueryType {
     UNKNOWN(u16),
-    A, // 1
-       // AAAA, etc...
+    A,     // 1
+    NS,    // 2
+    CNAME, // 5
+    //SOA,   // 6
+    //PTR, // 12
+    MX, // 15
+    //TXT,   // 16
+    AAAA, // 28
+          //SRV,   // 33
 }
 
 impl QueryType {
     pub fn from_u16(value: u16) -> QueryType {
         match value {
             1 => QueryType::A,
+            2 => QueryType::NS,
+            5 => QueryType::CNAME,
+            //6 => QueryType::SOA,
+            //12 => QueryType::PTR,
+            15 => QueryType::MX,
+            //16 => QueryType::TXT,
+            28 => QueryType::AAAA,
+            //33 => QueryType::SRV,
             _ => QueryType::UNKNOWN(value),
         }
     }
@@ -18,6 +33,14 @@ impl QueryType {
     pub fn to_u16(&self) -> u16 {
         match self {
             QueryType::A => 1,
+            QueryType::NS => 2,
+            QueryType::CNAME => 5,
+            //QueryType::SOA => 6,
+            //QueryType::PTR => 12,
+            QueryType::MX => 15,
+            //QueryType::TXT => 16,
+            QueryType::AAAA => 28,
+            //QueryType::SRV => 33,
             QueryType::UNKNOWN(value) => *value,
         }
     }

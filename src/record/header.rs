@@ -41,12 +41,12 @@ pub struct DnsHeader {
     // Set by server to indicate success or failure of the query.
     pub rescode: ResultCode, // 4 bits
 
-    // TODO: what is this?
-    // (1 bit)
+    // Checking Disabled (CD) (1 bit)
+    // Set by the sender to disable DNSSEC validation by the resolver.
     pub checking_disabled: bool,
 
     // Authenticated data (1 bit)
-    // TODO: what is this?
+    // Set by the resolver to indicate that DNSSEC validation succeeded.
     pub authed_data: bool,
 
     // Reserved (3 bits)
