@@ -23,6 +23,22 @@ impl QueryType {
     }
 }
 
+#[allow(dead_code)]
+pub enum QueryClass {
+    IN = 1,
+
+    // Unused
+    _CH = 3,
+    _HS = 4,
+    _ANY = 255,
+}
+
+impl QueryClass {
+    pub fn to_u16(self) -> u16 {
+        self as u16
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct DnsQuestion {
     pub name: String,
@@ -45,9 +61,8 @@ impl DnsQuestion {
     pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<(), String> {
         buffer.write_qname(&self.name)?;
 
-        let typenum = self.query_type.to_u16();
-        buffer.write_u16(typenum)?;
-        buffer.write_u16(0)?;
+        buffer.write_u16(self.query_type.to_u16())?;
+        buffer.write_u16(QueryClass::IN.to_u16())?;
 
         Ok(())
     }

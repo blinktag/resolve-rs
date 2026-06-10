@@ -62,6 +62,7 @@ fn write_packet() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn read_packet() -> Result<(), Box<dyn std::error::Error>> {
     let mut f = File::open("response_packet.txt")?;
     let mut buffer = BytePacketBuffer::new();
