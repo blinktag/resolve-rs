@@ -9,8 +9,33 @@ pub mod buf;
 pub mod record;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    write_packet()
+    //write_packet()
     //read_packet()
+    let socket = UdpSocket::bind(("0.0.0.0", 43210))?;
+
+    loop {
+        match handle_query(&socket) {
+            Ok(_) => (),
+            Err(e) => println!("Error: {}", e),
+        }
+    }
+}
+
+fn handle_query(socket: &UdpSocket) -> Result<(), Box<dyn std::error::Error>> {
+    let mut req_buffer = BytePacketBuffer::new();
+    let (_, src) = socket.recv_from(&mut req_buffer.buf)?;
+
+    let mut request = DnsPacket::from_buffer(&mut req_buffer)?;
+
+    let mut packet = DnsPacket::new();
+    packet.header.id = 4444;
+    packet.header.questions = 1;
+    packet.header.recursion_desired = true;
+    packet
+        .questions
+        .push(DnsQuestion::new(qname.to_string(), qtype));
+
+    Ok(())
 }
 
 fn write_packet() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,8 +43,6 @@ fn write_packet() -> Result<(), Box<dyn std::error::Error>> {
     let qtype = QueryType::AAAA;
 
     let server = ("8.8.8.8", 53);
-
-    let socket = UdpSocket::bind(("0.0.0.0", 43210))?;
 
     let mut packet = DnsPacket::new();
     packet.header.id = 4444;
