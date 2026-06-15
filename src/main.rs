@@ -3,14 +3,20 @@ use crate::record::packet::DnsPacket;
 use crate::record::question::{DnsQuestion, QueryType};
 use crate::record::result::ResultCode;
 use std::net::Ipv4Addr;
+use std::sync::Arc;
 use tokio::net::UdpSocket;
+use tokio::sync::Semaphore;
 
 pub mod buf;
 pub mod record;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket = UdpSocket::bind(("0.0.0.0", 2053)).await?;
+    // Using Arc since we will spawn a thread for each connection
+    let socket = Arc::new(UdpSocket::bind(("0.0.0.0", 2053)).await?);
+
+    // Max 256 concurrent queries
+    let limiter = Arc::new(Semaphore::new(256));
 
     loop {
         // Receive done in main() so that we can handle multiple queries at once.
@@ -18,12 +24,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (_, src) = socket.recv_from(&mut req_buffer.buf).await?;
         let request = DnsPacket::from_buffer(&mut req_buffer)?;
 
-        match handle_query(request).await {
-            Ok(res) => {
-                socket.send_to(&res, src).await?;
-            }
-            Err(e) => println!("Error: {}", e),
-        }
+        let socket = Arc::clone(&socket);
+        let limiter = Arc::clone(&limiter);
+
+        tokio::spawn(async move {
+            let _permit = limiter.acquire().await;
+            let response = handle_query(request).await?;
+            socket.send_to(&response, src).await?;
+
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        });
     }
 }
 
@@ -37,7 +47,7 @@ async fn lookup(
     let socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
 
     let mut packet = DnsPacket::new();
-    packet.header.id = 4444;
+    packet.header.id = 4444; // TODO: Generate random ID?
     packet.header.recursion_desired = true;
     packet
         .questions
@@ -56,7 +66,9 @@ async fn lookup(
     Ok(res_packet)
 }
 
-async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+async fn handle_query<'a>(
+    mut request: DnsPacket,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
     packet.header.recursion_desired = true;
