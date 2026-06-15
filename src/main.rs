@@ -10,8 +10,11 @@ use tokio::sync::Semaphore;
 pub mod buf;
 pub mod record;
 
+/// Helper type to clean up function signatures
+type DnsResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> DnsResult<()> {
     // Using Arc since we will spawn a thread for each connection
     let socket = Arc::new(UdpSocket::bind(("0.0.0.0", 2053)).await?);
 
@@ -42,7 +45,7 @@ async fn lookup(
     query_name: &str,
     query_type: QueryType,
     server: (Ipv4Addr, u16),
-) -> Result<DnsPacket, Box<dyn std::error::Error>> {
+) -> DnsResult<DnsPacket> {
     // Using port 0 will let the OS pick a random port
     let socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
 
@@ -66,9 +69,7 @@ async fn lookup(
     Ok(res_packet)
 }
 
-async fn handle_query<'a>(
-    mut request: DnsPacket,
-) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+async fn handle_query<'a>(mut request: DnsPacket) -> DnsResult<Vec<u8>> {
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
     packet.header.recursion_desired = true;
@@ -119,10 +120,7 @@ async fn handle_query<'a>(
     Ok(data.to_vec())
 }
 
-async fn recursive_lookup(
-    query_name: &str,
-    query_type: QueryType,
-) -> Result<DnsPacket, Box<dyn std::error::Error>> {
+async fn recursive_lookup(query_name: &str, query_type: QueryType) -> DnsResult<DnsPacket> {
     // Start with a.root-servers.net
     let mut ns = "198.41.0.4".parse::<Ipv4Addr>()?;
 
