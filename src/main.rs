@@ -13,8 +13,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = UdpSocket::bind(("0.0.0.0", 2053)).await?;
 
     loop {
-        match handle_query(&socket).await {
-            Ok(_) => (),
+        // Receive done in main() so that we can handle multiple queries at once.
+        let mut req_buffer = BytePacketBuffer::new();
+        let (_, src) = socket.recv_from(&mut req_buffer.buf).await?;
+        let request = DnsPacket::from_buffer(&mut req_buffer)?;
+
+        match handle_query(request).await {
+            Ok(res) => {
+                socket.send_to(&res, src).await?;
+            }
             Err(e) => println!("Error: {}", e),
         }
     }
@@ -28,7 +35,6 @@ async fn lookup(
 ) -> Result<DnsPacket, Box<dyn std::error::Error>> {
     // Using port 0 will let the OS pick a random port
     let socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
-    //socket.set_read_timeout(Some(Duration::from_secs(1)))?;
 
     let mut packet = DnsPacket::new();
     packet.header.id = 4444;
@@ -50,13 +56,7 @@ async fn lookup(
     Ok(res_packet)
 }
 
-async fn handle_query(socket: &UdpSocket) -> Result<(), Box<dyn std::error::Error>> {
-    let mut req_buffer = BytePacketBuffer::new();
-
-    let (_, src) = socket.recv_from(&mut req_buffer.buf).await?;
-
-    let mut request = DnsPacket::from_buffer(&mut req_buffer)?;
-
+async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
     packet.header.recursion_desired = true;
@@ -101,9 +101,10 @@ async fn handle_query(socket: &UdpSocket) -> Result<(), Box<dyn std::error::Erro
     let len = res_buffer.pos();
     let data = res_buffer.get_range(0, len)?;
 
-    socket.send_to(&data, src).await?;
+    //socket.send_to(&data, src).await?;
 
-    Ok(())
+    // Still need send_to() after this
+    Ok(data.to_vec())
 }
 
 async fn recursive_lookup(
