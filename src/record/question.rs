@@ -1,4 +1,5 @@
 use crate::buf::BytePacketBuffer;
+use anyhow::Result;
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, Copy)]
 pub enum QueryType {
@@ -79,7 +80,7 @@ impl DnsQuestion {
         DnsQuestion { name, query_type }
     }
 
-    pub fn read(&mut self, buffer: &mut BytePacketBuffer) -> Result<(), String> {
+    pub fn read(&mut self, buffer: &mut BytePacketBuffer) -> Result<()> {
         buffer.read_qname(&mut self.name)?;
         self.query_type = QueryType::from_u16(buffer.read_u16()?);
         let _ = buffer.read_u16(); // class
@@ -87,7 +88,7 @@ impl DnsQuestion {
         Ok(())
     }
 
-    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<(), String> {
+    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<()> {
         buffer.write_qname(&self.name)?;
 
         buffer.write_u16(self.query_type.to_u16())?;

@@ -1,4 +1,5 @@
 use crate::record::record::TERMINATOR;
+use anyhow::{anyhow, Result};
 
 pub const MAX_UDP_PACKET_SIZE: usize = 512;
 const MAX_JUMPS: usize = 5;
@@ -26,21 +27,21 @@ impl BytePacketBuffer {
     }
 
     /// Advances the position in the buffer, `steps` times.
-    pub fn step(&mut self, steps: usize) -> Result<(), String> {
+    pub fn step(&mut self, steps: usize) -> Result<()> {
         self.pos += steps;
         Ok(())
     }
 
     /// Sets the position in the buffer to `pos`
-    pub fn seek(&mut self, pos: usize) -> Result<(), String> {
+    pub fn seek(&mut self, pos: usize) -> Result<()> {
         self.pos = pos;
         Ok(())
     }
 
     /// Reads a single byte from the buffer and then advances the position.
-    pub fn read(&mut self) -> Result<u8, String> {
+    pub fn read(&mut self) -> Result<u8> {
         if self.pos >= MAX_UDP_PACKET_SIZE {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
         let res = self.buf[self.pos];
         self.pos += 1;
@@ -49,30 +50,30 @@ impl BytePacketBuffer {
     }
 
     /// Reads a single byte from the buffer without advancing the position.
-    pub fn get(&mut self, pos: usize) -> Result<u8, String> {
+    pub fn get(&mut self, pos: usize) -> Result<u8> {
         if pos >= MAX_UDP_PACKET_SIZE {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
         Ok(self.buf[pos])
     }
 
     /// Reads a range of bytes from the buffer starting at `start` and going `len` bytes
     /// forward without advancing the position.
-    pub fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8], String> {
+    pub fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8]> {
         if start >= MAX_UDP_PACKET_SIZE || len >= MAX_UDP_PACKET_SIZE {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
 
         Ok(&self.buf[start..start + len])
     }
 
     /// Read two bytes, stepping twice forward
-    pub fn read_u16(&mut self) -> Result<u16, String> {
+    pub fn read_u16(&mut self) -> Result<u16> {
         let res = ((self.read()? as u16) << 8) | (self.read()? as u16);
         Ok(res)
     }
 
-    pub fn read_u32(&mut self) -> Result<u32, String> {
+    pub fn read_u32(&mut self) -> Result<u32> {
         let res = ((self.read()? as u32) << 24)
             | ((self.read()? as u32) << 16)
             | ((self.read()? as u32) << 8)
@@ -89,7 +90,7 @@ impl BytePacketBuffer {
     ///
     /// This function will take something like [3]www[6]google[3]com[0] and append
     /// www.google.com to outstr.
-    pub fn read_qname(&mut self, outstr: &mut String) -> Result<(), String> {
+    pub fn read_qname(&mut self, outstr: &mut String) -> Result<()> {
         // Keep track of position locally for when we run into a jump
         let mut pos = self.pos();
 
@@ -103,7 +104,7 @@ impl BytePacketBuffer {
             // can craft a packet with a cycle in the jump instructions. This guards
             // against such packets.
             if jumps_performed > MAX_JUMPS {
-                return Err(format!("Limit of {} jumps exceeded", MAX_JUMPS).into());
+                return Err(anyhow!("Limit of {} jumps exceeded", MAX_JUMPS).into());
             }
 
             // At this point, we're always at the beginning of a label. Recall
@@ -164,9 +165,9 @@ impl BytePacketBuffer {
         Ok(())
     }
 
-    pub fn write(&mut self, val: u8) -> Result<(), String> {
+    pub fn write(&mut self, val: u8) -> Result<()> {
         if self.pos >= MAX_UDP_PACKET_SIZE {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
 
         self.buf[self.pos] = val;
@@ -175,18 +176,18 @@ impl BytePacketBuffer {
         Ok(())
     }
 
-    pub fn write_u8(&mut self, val: u8) -> Result<(), String> {
+    pub fn write_u8(&mut self, val: u8) -> Result<()> {
         self.write(val)
     }
 
-    pub fn write_u16(&mut self, val: u16) -> Result<(), String> {
+    pub fn write_u16(&mut self, val: u16) -> Result<()> {
         self.write((val >> 8) as u8)?;
         self.write((val & 0xff) as u8)?;
 
         Ok(())
     }
 
-    pub fn write_u32(&mut self, val: u32) -> Result<(), String> {
+    pub fn write_u32(&mut self, val: u32) -> Result<()> {
         self.write(((val >> 24) & 0xff) as u8)?;
         self.write(((val >> 16) & 0xff) as u8)?;
         self.write(((val >> 8) & 0xff) as u8)?;
@@ -195,11 +196,11 @@ impl BytePacketBuffer {
         Ok(())
     }
 
-    pub fn write_qname(&mut self, qname: &str) -> Result<(), String> {
+    pub fn write_qname(&mut self, qname: &str) -> Result<()> {
         for label in qname.split('.') {
             let len = label.len();
             if len > MAX_LABEL_LEN {
-                return Err("Label is longer than 63 characters".into());
+                return Err(anyhow!("Label is longer than 63 characters"));
             }
 
             // Write length byte
@@ -217,13 +218,13 @@ impl BytePacketBuffer {
         Ok(())
     }
 
-    pub fn set(&mut self, pos: usize, val: u8) -> Result<(), String> {
+    pub fn set(&mut self, pos: usize, val: u8) -> Result<()> {
         self.buf[pos] = val;
 
         Ok(())
     }
 
-    pub fn set_u16(&mut self, pos: usize, val: u16) -> Result<(), String> {
+    pub fn set_u16(&mut self, pos: usize, val: u16) -> Result<()> {
         self.set(pos, (val >> 8) as u8)?;
         self.set(pos + 1, (val & 0xFF) as u8)?;
 

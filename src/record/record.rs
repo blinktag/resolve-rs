@@ -1,5 +1,6 @@
 use crate::buf::BytePacketBuffer;
 use crate::record::question::{QueryClass, QueryType};
+use anyhow::Result;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 pub const TERMINATOR: u8 = 0;
@@ -67,7 +68,7 @@ pub enum DnsRecord {
 }
 
 impl DnsRecord {
-    pub fn read(buffer: &mut BytePacketBuffer) -> Result<DnsRecord, String> {
+    pub fn read(buffer: &mut BytePacketBuffer) -> Result<DnsRecord> {
         let mut domain = String::new();
         buffer.read_qname(&mut domain)?;
 
@@ -155,7 +156,7 @@ impl DnsRecord {
         }
     }
 
-    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<usize, String> {
+    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<usize> {
         let start_pos = buffer.pos();
 
         match &self {

@@ -1,5 +1,6 @@
 use crate::buf::BytePacketBuffer;
 use crate::record::result::ResultCode;
+use anyhow::Result;
 
 #[derive(Clone, Debug, Default)]
 pub struct DnsHeader {
@@ -78,7 +79,7 @@ impl DnsHeader {
         DnsHeader::default()
     }
 
-    pub fn read(&mut self, buffer: &mut BytePacketBuffer) -> Result<(), String> {
+    pub fn read(&mut self, buffer: &mut BytePacketBuffer) -> Result<()> {
         // ID will be the first 2 bytes of the packet
         self.id = buffer.read_u16()?;
 
@@ -145,7 +146,7 @@ impl DnsHeader {
         Ok(())
     }
 
-    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<(), String> {
+    pub fn write(&self, buffer: &mut BytePacketBuffer) -> Result<()> {
         // First field is ID
         buffer.write_u16(self.id)?;
 

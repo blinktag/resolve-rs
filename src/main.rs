@@ -2,6 +2,7 @@ use crate::buf::BytePacketBuffer;
 use crate::record::packet::DnsPacket;
 use crate::record::question::{DnsQuestion, QueryType};
 use crate::record::result::ResultCode;
+use anyhow::{anyhow, Result};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
@@ -11,10 +12,9 @@ pub mod buf;
 pub mod record;
 
 /// Helper type to clean up function signatures
-type DnsResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::main]
-async fn main() -> DnsResult<()> {
+async fn main() -> Result<()> {
     // Using Arc since we will spawn a thread for each connection
     let socket = Arc::new(UdpSocket::bind(("0.0.0.0", 2053)).await?);
 
@@ -35,7 +35,7 @@ async fn main() -> DnsResult<()> {
             let response = handle_query(request).await?;
             socket.send_to(&response, src).await?;
 
-            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+            Ok::<(), anyhow::Error>(())
         });
     }
 }
@@ -45,7 +45,7 @@ async fn lookup(
     query_name: &str,
     query_type: QueryType,
     server: (Ipv4Addr, u16),
-) -> DnsResult<DnsPacket> {
+) -> Result<DnsPacket> {
     // Using port 0 will let the OS pick a random port
     let socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
 
@@ -69,7 +69,7 @@ async fn lookup(
     Ok(res_packet)
 }
 
-async fn handle_query<'a>(mut request: DnsPacket) -> DnsResult<Vec<u8>> {
+async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>> {
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
     packet.header.recursion_desired = true;
@@ -120,7 +120,7 @@ async fn handle_query<'a>(mut request: DnsPacket) -> DnsResult<Vec<u8>> {
     Ok(data.to_vec())
 }
 
-async fn recursive_lookup(query_name: &str, query_type: QueryType) -> DnsResult<DnsPacket> {
+async fn recursive_lookup(query_name: &str, query_type: QueryType) -> Result<DnsPacket> {
     // Start with a.root-servers.net
     let mut ns = "198.41.0.4".parse::<Ipv4Addr>()?;
 
@@ -154,7 +154,7 @@ async fn recursive_lookup(query_name: &str, query_type: QueryType) -> DnsResult<
 
         let new_ns_name = match response.get_unresolved_ns(query_name) {
             Some(name) => name,
-            None => return Err("No NS record found".into()),
+            None => return Err(anyhow!("No NS record found")),
         };
 
         // Find the A record for the NS since we didn't get one in the answer section
@@ -167,5 +167,5 @@ async fn recursive_lookup(query_name: &str, query_type: QueryType) -> DnsResult<
         }
     }
 
-    Err("Max hops reached".into())
+    Err(anyhow!("Max hops reached"))
 }
