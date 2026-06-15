@@ -64,17 +64,20 @@ fn handle_query(socket: &UdpSocket) -> Result<(), Box<dyn std::error::Error>> {
             packet.header.rescode = result.header.rescode;
 
             for rec in result.answers {
-                println!("Answer: {:?}", rec);
                 packet.answers.push(rec);
             }
 
+            packet
+                .answers
+                .iter()
+                .take(1)
+                .for_each(|rec| println!("Answer: {:?}", rec));
+
             for rec in result.authorities {
-                println!("Authority: {:?}", rec);
                 packet.authorities.push(rec);
             }
 
             for rec in result.resources {
-                println!("Resource: {:?}", rec);
                 packet.resources.push(rec);
             }
         } else {
@@ -105,10 +108,7 @@ fn recursive_lookup(
     let mut hops = 0;
     while hops < MAX_HOPS {
         hops += 1;
-        println!(
-            "[HOP {}/10]Resolving {:?}  {} with {}",
-            hops, qtype, qname, ns
-        );
+        println!("Resolving {:?}  {} with {}", qtype, qname, ns);
 
         let ns_copy = ns.clone();
 
@@ -144,8 +144,6 @@ fn recursive_lookup(
         } else {
             return Ok(response);
         }
-
-        println!("New NS: {}", ns);
     }
 
     return Err("Max hops reached".into());

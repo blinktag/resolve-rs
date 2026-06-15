@@ -46,6 +46,12 @@ impl QueryType {
     }
 }
 
+impl std::fmt::Display for QueryType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[allow(dead_code)]
 pub enum QueryClass {
     IN = 1,
