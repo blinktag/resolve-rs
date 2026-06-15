@@ -63,23 +63,25 @@ fn handle_query(socket: &UdpSocket) -> Result<(), Box<dyn std::error::Error>> {
             packet.questions.push(question.clone());
             packet.header.rescode = result.header.rescode;
 
-            for rec in result.answers {
-                packet.answers.push(rec);
-            }
-
-            packet
+            result
                 .answers
                 .iter()
-                .take(1)
-                .for_each(|rec| println!("Answer: {:?}", rec));
+                .for_each(|rec| packet.answers.push(rec.to_owned()));
 
-            for rec in result.authorities {
-                packet.authorities.push(rec);
+            // Some responses might return multiple answers, so we'll just take the first one
+            if let Some(answer) = packet.answers.first() {
+                println!("Answer: {:?}", answer);
             }
 
-            for rec in result.resources {
-                packet.resources.push(rec);
-            }
+            result
+                .authorities
+                .iter()
+                .for_each(|rec| packet.authorities.push(rec.to_owned()));
+
+            result
+                .resources
+                .iter()
+                .for_each(|rec| packet.resources.push(rec.to_owned()));
         } else {
             packet.header.rescode = ResultCode::SERVFAIL;
         }
