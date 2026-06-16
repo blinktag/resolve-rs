@@ -5,13 +5,14 @@ use crate::record::result::ResultCode;
 use anyhow::{anyhow, Result};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
+use tokio::time::timeout;
 
 pub mod buf;
 pub mod record;
-
-/// Helper type to clean up function signatures
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,23 +22,54 @@ async fn main() -> Result<()> {
     // Max 256 concurrent queries
     let limiter = Arc::new(Semaphore::new(256));
 
+    let mut tasks = JoinSet::new();
+
     loop {
         // Receive done in main() so that we can handle multiple queries at once.
         let mut req_buffer = BytePacketBuffer::new();
-        let (_, src) = socket.recv_from(&mut req_buffer.buf).await?;
-        let request = DnsPacket::from_buffer(&mut req_buffer)?;
 
-        let socket = Arc::clone(&socket);
-        let limiter = Arc::clone(&limiter);
+        tokio::select! {
+            result = socket.recv_from(&mut req_buffer.buf) => {
+                let (_, src) = result?;
+                let request = DnsPacket::from_buffer(&mut req_buffer)?;
 
-        tokio::spawn(async move {
-            let _permit = limiter.acquire().await;
-            let response = handle_query(request).await?;
-            socket.send_to(&response, src).await?;
+                let socket = Arc::clone(&socket);
+                let limiter = Arc::clone(&limiter);
 
-            Ok::<(), anyhow::Error>(())
-        });
+                // Spawn a task for each query
+                tasks.spawn(async move {
+                    let permit = limiter.acquire().await;
+                    let response = handle_query(request).await?;
+                    socket.send_to(&response, src).await?;
+
+                    drop(permit);
+                    Ok::<(), anyhow::Error>(())
+                });
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!("Received SIGINT, shutting down");
+                break; // break out of loop and trigger graceful shutdown
+            }
+
+        }
     }
+
+    let graceful = async {
+        while let Some(result) = tasks.join_next().await {
+            if let Err(e) = result {
+                eprintln!("Error: {}", e);
+            } else {
+                println!("Shutting down task");
+            }
+        }
+    };
+
+    if timeout(Duration::from_secs(5), graceful).await.is_err() {
+        eprintln!("Shutdown timeout reached, force quitting threads");
+        tasks.abort_all();
+    }
+
+    Ok(())
 }
 
 // Ask up the authority chain
