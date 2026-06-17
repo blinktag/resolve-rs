@@ -2,6 +2,7 @@ use crate::buf::BytePacketBuffer;
 use crate::record::packet::DnsPacket;
 use crate::record::question::{DnsQuestion, QueryType};
 use crate::record::result::ResultCode;
+use crate::telemetry::{get_subscriber, init_subscriber};
 use anyhow::{anyhow, Result};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
@@ -10,6 +11,7 @@ use tokio::net::UdpSocket;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
+use tracing::{debug, error};
 
 pub mod buf;
 pub mod record;
@@ -17,7 +19,16 @@ pub mod telemetry;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Using Arc since we will spawn a thread for each connection
+    // Setup tracing
+    let subscriber = get_subscriber(
+        "resolve-rs".to_string(),
+        "info".to_string(),
+        std::io::stdout,
+    );
+    init_subscriber(subscriber);
+
+    // Using Arc since we will spawn a thread for each connection and we need to share the
+    // socket between them.
     let socket = Arc::new(UdpSocket::bind(("0.0.0.0", 2053)).await?);
 
     // Max 256 concurrent queries
@@ -48,7 +59,7 @@ async fn main() -> Result<()> {
                 });
             }
             _ = tokio::signal::ctrl_c() => {
-                println!("Received SIGINT, shutting down");
+                debug!("Received SIGINT, shutting down");
                 break; // break out of loop and trigger graceful shutdown
             }
 
@@ -58,15 +69,15 @@ async fn main() -> Result<()> {
     let graceful = async {
         while let Some(result) = tasks.join_next().await {
             if let Err(e) = result {
-                eprintln!("Error: {}", e);
+                error!("Error: {}", e);
             } else {
-                println!("Shutting down task");
+                debug!("Shutting down task");
             }
         }
     };
 
     if timeout(Duration::from_secs(5), graceful).await.is_err() {
-        eprintln!("Shutdown timeout reached, force quitting threads");
+        error!("Shutdown timeout reached, force quitting threads");
         tasks.abort_all();
     }
 
@@ -74,16 +85,18 @@ async fn main() -> Result<()> {
 }
 
 // Ask up the authority chain
+#[tracing::instrument(name = "Performing lookup to remote server")]
 async fn lookup(
     query_name: &str,
     query_type: QueryType,
+    header_id: u16,
     server: (Ipv4Addr, u16),
 ) -> Result<DnsPacket> {
     // Using port 0 will let the OS pick a random port
     let socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
 
     let mut packet = DnsPacket::new();
-    packet.header.id = 4444; // TODO: Generate random ID?
+    packet.header.id = header_id;
     packet.header.recursion_desired = true;
     packet
         .questions
@@ -102,6 +115,7 @@ async fn lookup(
     Ok(res_packet)
 }
 
+#[tracing::instrument(name = "Handling query")]
 async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>> {
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
@@ -110,10 +124,12 @@ async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>> {
     packet.header.response = true;
 
     if let Some(question) = request.questions.pop() {
-        println!("Received query: {:?}", question);
+        debug!("Received query: {:?}", question);
 
         packet.header.rescode = ResultCode::FORMERR; // default
-        if let Ok(result) = recursive_lookup(&question.name, question.query_type).await {
+        if let Ok(result) =
+            recursive_lookup(&question.name, question.query_type, request.header.id).await
+        {
             packet.questions.push(question.clone());
             packet.header.rescode = result.header.rescode;
 
@@ -124,7 +140,7 @@ async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>> {
 
             // Some responses might return multiple answers, so we'll just take the first one
             if let Some(answer) = packet.answers.first() {
-                println!("Answer: {:?}", answer);
+                debug!("Answer: {:?}", answer);
             }
 
             result
@@ -147,13 +163,16 @@ async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>> {
     let len = res_buffer.pos();
     let data = res_buffer.get_range(0, len)?;
 
-    //socket.send_to(&data, src).await?;
-
     // Still need send_to() after this
     Ok(data.to_vec())
 }
 
-async fn recursive_lookup(query_name: &str, query_type: QueryType) -> Result<DnsPacket> {
+#[tracing::instrument(name = "Performing recursive lookup")]
+async fn recursive_lookup(
+    query_name: &str,
+    query_type: QueryType,
+    header_id: u16,
+) -> Result<DnsPacket> {
     // Start with a.root-servers.net
     let mut ns = "198.41.0.4".parse::<Ipv4Addr>()?;
 
@@ -162,12 +181,12 @@ async fn recursive_lookup(query_name: &str, query_type: QueryType) -> Result<Dns
     let mut hops = 0;
     while hops < MAX_HOPS {
         hops += 1;
-        println!("Resolving {:?}  {} with {}", query_type, query_name, ns);
+        debug!("Resolving {:?}  {} with {}", query_type, query_name, ns);
 
         let ns_copy = ns.clone();
 
         let server = (ns_copy, 53);
-        let response = lookup(query_name, query_type, server).await?;
+        let response = lookup(query_name, query_type, header_id, server).await?;
 
         // We have our answer
         if !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR {
@@ -191,7 +210,8 @@ async fn recursive_lookup(query_name: &str, query_type: QueryType) -> Result<Dns
         };
 
         // Find the A record for the NS since we didn't get one in the answer section
-        let recursive_response = Box::pin(recursive_lookup(&new_ns_name, QueryType::A)).await?;
+        let recursive_response =
+            Box::pin(recursive_lookup(&new_ns_name, QueryType::A, header_id)).await?;
 
         if let Some(new_ns) = recursive_response.get_random_a() {
             ns = new_ns;

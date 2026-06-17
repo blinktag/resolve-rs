@@ -2,6 +2,7 @@ use crate::buf::BytePacketBuffer;
 use crate::record::question::{QueryClass, QueryType};
 use anyhow::Result;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use tracing::warn;
 
 pub const TERMINATOR: u8 = 0;
 
@@ -204,7 +205,7 @@ impl DnsRecord {
                 }
             }
             DnsRecord::UNKNOWN { .. } => {
-                eprintln!("Skipping record: {:?}", self)
+                warn!("Skipping record: {:?}, unhandled type", self)
             }
             _ => {
                 // ignore for now
