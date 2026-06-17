@@ -11,6 +11,6 @@ with some additional features, most importantly async.
 - [ ] TCP
 - [ ] DNSSEC
 - [x] Better error handling with `anyhow`
-- [ ] Better logging with `tracing`
+- [x] Better logging with `tracing`
 - [ ] API endpoints for metrics
 - [ ] Zone Hosting 
