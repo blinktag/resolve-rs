@@ -85,7 +85,13 @@ async fn main() -> Result<()> {
 }
 
 // Ask up the authority chain
-#[tracing::instrument(name = "Performing lookup to remote server")]
+#[tracing::instrument(name = "Performing lookup to remote server",
+fields(
+query_name = query_name,
+query_type = query_type.to_string(),
+header_id = header_id,
+server = %{ server.0 }
+) )]
 async fn lookup(
     query_name: &str,
     query_type: QueryType,
@@ -115,7 +121,12 @@ async fn lookup(
     Ok(res_packet)
 }
 
-#[tracing::instrument(name = "Handling query")]
+#[tracing::instrument(name = "Handling query", skip(request),
+fields(
+query_name = request.questions.first().unwrap().name,
+query_type = request.questions.first().unwrap().query_type.to_string(),
+header_id = request.header.id
+))]
 async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>> {
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
@@ -167,7 +178,14 @@ async fn handle_query<'a>(mut request: DnsPacket) -> Result<Vec<u8>> {
     Ok(data.to_vec())
 }
 
-#[tracing::instrument(name = "Performing recursive lookup")]
+#[tracing::instrument(
+    name = "Performing recursive lookup",
+    fields(
+        query_name = query_name,
+        query_type = query_type.to_string(),
+        header_id = header_id
+    )
+)]
 async fn recursive_lookup(
     query_name: &str,
     query_type: QueryType,
