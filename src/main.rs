@@ -13,6 +13,7 @@ use tokio::time::timeout;
 
 pub mod buf;
 pub mod record;
+pub mod telemetry;
 
 #[tokio::main]
 async fn main() -> Result<()> {
