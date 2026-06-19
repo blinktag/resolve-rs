@@ -1,6 +1,6 @@
 use crate::buf::BytePacketBuffer;
-use crate::handlers::handle_query;
 use crate::record::packet::DnsPacket;
+use crate::resolver::resolver::ResolverService;
 use crate::telemetry::{get_subscriber, init_subscriber};
 use anyhow::Result;
 use std::sync::Arc;
@@ -9,11 +9,12 @@ use tokio::net::UdpSocket;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 pub mod buf;
 pub mod handlers;
 pub mod record;
+pub mod resolver;
 pub mod telemetry;
 
 #[tokio::main]
@@ -34,6 +35,7 @@ async fn main() -> Result<()> {
     let limiter = Arc::new(Semaphore::new(256));
 
     let mut tasks = JoinSet::new();
+    let resolver = Arc::new(ResolverService::new());
 
     loop {
         // Receive done in main() so that we can handle multiple queries at once.
@@ -46,11 +48,12 @@ async fn main() -> Result<()> {
 
                 let socket = Arc::clone(&socket);
                 let limiter = Arc::clone(&limiter);
+                let resolver = Arc::clone(&resolver);
 
                 // Spawn a task for each query
                 tasks.spawn(async move {
                     let permit = limiter.acquire().await;
-                    let response = handle_query(request).await?;
+                    let response = resolver.handle_query(request).await?;
                     socket.send_to(&response, src).await?;
 
                     drop(permit);
@@ -58,7 +61,7 @@ async fn main() -> Result<()> {
                 });
             }
             _ = tokio::signal::ctrl_c() => {
-                debug!("Received SIGINT, shutting down");
+                info!("Received SIGINT, shutting down");
                 break; // break out of loop and trigger graceful shutdown
             }
 

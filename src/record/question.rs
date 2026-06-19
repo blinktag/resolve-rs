@@ -80,6 +80,10 @@ impl DnsQuestion {
         DnsQuestion { name, query_type }
     }
 
+    pub fn to_cache_key(&self) -> String {
+        format!("{}:{}", self.name, self.query_type)
+    }
+
     pub fn read(&mut self, buffer: &mut BytePacketBuffer) -> Result<()> {
         buffer.read_qname(&mut self.name)?;
         self.query_type = QueryType::from_u16(buffer.read_u16()?);
