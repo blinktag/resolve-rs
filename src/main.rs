@@ -1,3 +1,4 @@
+use crate::api::api::create_router;
 use crate::buf::BytePacketBuffer;
 use crate::record::packet::DnsPacket;
 use crate::resolver::resolver::ResolverService;
@@ -11,6 +12,7 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 use tracing::{debug, error, info};
 
+pub mod api;
 pub mod buf;
 pub mod handlers;
 pub mod record;
@@ -19,6 +21,20 @@ pub mod telemetry;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let _ = tokio::try_join!(handle_dns_requests(), handle_api_requests());
+    Ok(())
+}
+
+async fn handle_api_requests() -> Result<()> {
+    let router = create_router();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+
+    axum::serve(listener, router).await?;
+
+    Ok(())
+}
+
+async fn handle_dns_requests() -> Result<()> {
     // Setup tracing
     let subscriber = get_subscriber(
         "resolve-rs".to_string(),

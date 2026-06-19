@@ -10,3 +10,6 @@ tracing = { version = "0.1.44", features = ["log"] }
 tracing-subscriber = { version = "0.3.23", features = ["registry", "env-filter"] }
 tracing-log = "0.2.0"
 tracing-bunyan-formatter = "0.3.10"
+axum = "0.8.9"
+http = "1.4.2"
+serde = { version = "1.0.228", features = ["derive"] }
