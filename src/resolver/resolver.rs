@@ -23,9 +23,8 @@ impl ResolverService {
 
     #[tracing::instrument(name = "Checking cache for question", skip(dns_question))]
     fn get_cached_question(&self, dns_question: &DnsQuestion) -> Option<DnsPacket> {
-        println!("Checking cache for {:?}", dns_question.to_cache_key());
         let cache = self.cache.read().unwrap();
-        match cache.get(&dns_question.name) {
+        match cache.get(&dns_question.to_cache_key()) {
             Some(answer) => Some(answer.clone()),
             None => None,
         }
@@ -42,10 +41,8 @@ impl ResolverService {
             Err(_) => return Err(anyhow!("Failed to acquire cache lock")),
         };
 
-        match cache.insert(question.to_cache_key(), answer) {
-            Some(_) => Ok(()),
-            None => Err(anyhow!("Failed to insert cache entry")),
-        }
+        cache.insert(question.to_cache_key(), answer);
+        Ok(())
     }
 
     // Ask up the authority chain
@@ -106,7 +103,10 @@ header_id = request.header.id
             // Handle cache
             match self.get_cached_question(&question) {
                 Some(mut q) => {
-                    info!("Cache hit: {:?}", q);
+                    // Cache will have the ID from the original request when it was cached
+                    // so overwrite it with the ID from the incoming request
+                    q.header.id = request.header.id;
+
                     let mut res_buffer = BytePacketBuffer::new();
                     q.write(&mut res_buffer)?;
 
