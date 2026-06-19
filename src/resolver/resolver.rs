@@ -1,17 +1,26 @@
 use crate::buf::BytePacketBuffer;
 use crate::record::packet::DnsPacket;
 use crate::record::question::{DnsQuestion, QueryType};
+use crate::record::record::DnsRecord;
 use crate::record::result::ResultCode;
 use anyhow::anyhow;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::RwLock;
+use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 use tracing::{debug, error, info};
 
 #[derive(Debug)]
 pub struct ResolverService {
-    cache: RwLock<HashMap<String, DnsPacket>>,
+    cache: RwLock<HashMap<String, CacheEntry>>,
+}
+
+#[derive(Clone, Debug)]
+struct CacheEntry {
+    packet: DnsPacket,
+    inserted_at: Instant,
+    expires_after: Duration,
 }
 
 impl ResolverService {
@@ -23,11 +32,23 @@ impl ResolverService {
 
     #[tracing::instrument(name = "Checking cache for question", skip(dns_question))]
     fn get_cached_question(&self, dns_question: &DnsQuestion) -> Option<DnsPacket> {
-        let cache = self.cache.read().unwrap();
-        match cache.get(&dns_question.to_cache_key()) {
-            Some(answer) => Some(answer.clone()),
-            None => None,
+        let cache_key = dns_question.to_cache_key();
+        let mut cache = match self.cache.write() {
+            Ok(cache) => cache,
+            Err(_) => return None,
+        };
+
+        let Some(entry) = cache.get(&cache_key) else {
+            return None;
+        };
+
+        let elapsed = entry.inserted_at.elapsed();
+        if elapsed >= entry.expires_after {
+            cache.remove(&cache_key);
+            return None;
         }
+
+        Some(packet_with_remaining_ttls(&entry.packet, elapsed))
     }
 
     #[tracing::instrument(name = "Setting cache for question", skip(question, answer))]
@@ -41,7 +62,22 @@ impl ResolverService {
             Err(_) => return Err(anyhow!("Failed to acquire cache lock")),
         };
 
-        cache.insert(question.to_cache_key(), answer);
+        let Some(expires_after) = packet_ttl(&answer) else {
+            return Ok(());
+        };
+
+        if expires_after.is_zero() {
+            return Ok(());
+        }
+
+        cache.insert(
+            question.to_cache_key(),
+            CacheEntry {
+                packet: answer,
+                inserted_at: Instant::now(),
+                expires_after,
+            },
+        );
         Ok(())
     }
 
@@ -113,7 +149,6 @@ header_id = request.header.id
                     let len = res_buffer.pos();
                     let data = res_buffer.get_range(0, len)?;
 
-                    // TODO: TTL check
                     return Ok(data.to_vec());
                 }
                 _ => {
@@ -234,5 +269,55 @@ header_id = request.header.id
         }
 
         Err(anyhow!("Max hops reached"))
+    }
+}
+
+fn packet_ttl(packet: &DnsPacket) -> Option<Duration> {
+    // Choose lowest TTL for all records in the packet
+    packet
+        .answers
+        .iter()
+        .chain(packet.authorities.iter())
+        .chain(packet.resources.iter())
+        .filter_map(record_ttl)
+        .min()
+        .map(|ttl| Duration::from_secs(u64::from(ttl)))
+}
+
+fn packet_with_remaining_ttls(packet: &DnsPacket, elapsed: Duration) -> DnsPacket {
+    let elapsed_secs = elapsed.as_secs().min(u64::from(u32::MAX)) as u32;
+    let mut packet = packet.clone();
+
+    packet
+        .answers
+        .iter_mut()
+        .chain(packet.authorities.iter_mut())
+        .chain(packet.resources.iter_mut())
+        .for_each(|record| decrement_record_ttl(record, elapsed_secs));
+
+    packet
+}
+
+fn record_ttl(record: &DnsRecord) -> Option<u32> {
+    match record {
+        DnsRecord::UNKNOWN { ttl, .. }
+        | DnsRecord::A { ttl, .. }
+        | DnsRecord::NS { ttl, .. }
+        | DnsRecord::CNAME { ttl, .. }
+        | DnsRecord::MX { ttl, .. }
+        | DnsRecord::AAAA { ttl, .. } => Some(*ttl),
+    }
+}
+
+fn decrement_record_ttl(record: &mut DnsRecord, elapsed_secs: u32) {
+    match record {
+        DnsRecord::UNKNOWN { ttl, .. }
+        | DnsRecord::A { ttl, .. }
+        | DnsRecord::NS { ttl, .. }
+        | DnsRecord::CNAME { ttl, .. }
+        | DnsRecord::MX { ttl, .. }
+        | DnsRecord::AAAA { ttl, .. } => {
+            *ttl = ttl.saturating_sub(elapsed_secs);
+        }
     }
 }
