@@ -13,3 +13,4 @@ tracing-bunyan-formatter = "0.3.10"
 axum = "0.8.9"
 http = "1.4.2"
 serde = { version = "1.0.228", features = ["derive"] }
+tokio-util = "0.7.18"

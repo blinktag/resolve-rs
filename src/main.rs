@@ -10,7 +10,8 @@ use tokio::net::UdpSocket;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
-use tracing::{debug, error, info};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error};
 
 pub mod api;
 pub mod buf;
@@ -21,20 +22,47 @@ pub mod telemetry;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let _ = tokio::try_join!(handle_dns_requests(), handle_api_requests());
+    let shutdown = CancellationToken::new();
+
+    let http_shutdown = shutdown.clone();
+    let dns_shutdown = shutdown.clone();
+
+    tokio::select! {
+        result = handle_dns_requests(dns_shutdown) => {
+            shutdown.cancel();
+            result?;
+        }
+        result = handle_api_requests(http_shutdown) => {
+            shutdown.cancel();
+            result?;
+        }
+        _ = tokio::signal::ctrl_c() => {
+            shutdown.cancel();
+        }
+    }
+
+    // let _ = tokio::try_join!(
+    //     handle_dns_requests(dns_shutdown),
+    //     handle_api_requests(http_shutdown)
+    // );
     Ok(())
 }
 
-async fn handle_api_requests() -> Result<()> {
+async fn handle_api_requests(shutdown: CancellationToken) -> Result<()> {
     let router = create_router();
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
 
-    axum::serve(listener, router).await?;
+    axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            shutdown.cancelled().await;
+        })
+        .await?;
 
+    println!("HTTP server shutting down...");
     Ok(())
 }
 
-async fn handle_dns_requests() -> Result<()> {
+async fn handle_dns_requests(shutdown: CancellationToken) -> Result<()> {
     // Setup tracing
     let subscriber = get_subscriber(
         "resolve-rs".to_string(),
@@ -76,11 +104,9 @@ async fn handle_dns_requests() -> Result<()> {
                     Ok::<(), anyhow::Error>(())
                 });
             }
-            _ = tokio::signal::ctrl_c() => {
-                info!("Received SIGINT, shutting down");
-                break; // break out of loop and trigger graceful shutdown
-            }
-
+            _ = shutdown.cancelled() => {
+              break;
+          }
         }
     }
 
